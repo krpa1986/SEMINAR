@@ -128,7 +128,6 @@ int main(void)
 	uint16_t LUX;
 	//pomoćna varijabla za mijenjanje PWM duty cyclea//
 	 uint8_t i;
-	 uint16_t DC = i*180;
 	/* USER CODE BEGIN WHILE */
 	//pokretanje I2C komunikacije između Nuclea i BH1750, slanje upute o modu rada//
 	HAL_I2C_Master_Transmit(&hi2c2, addr << 1, &pwrup, sizeof(pwrup), 100);
