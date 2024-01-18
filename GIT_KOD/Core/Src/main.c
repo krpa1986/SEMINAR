@@ -25,6 +25,28 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+#ifdef __GNUC__
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#define GETCHAR_PROTOTYPE int __io_getchar(void)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#define GETCHAR_PROTOTYPE int fgetc(FILE *f)
+#endif
+
+PUTCHAR_PROTOTYPE
+{
+ HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+ return ch;
+}
+GETCHAR_PROTOTYPE
+{
+ uint8_t ch = 0;
+ __HAL_UART_CLEAR_OREFLAG(&huart2);
+ HAL_UART_Receive(&huart2, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+ HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+ return ch;
+}
 
 /* USER CODE END Includes */
 
@@ -57,7 +79,8 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+//definiranje varijable čiju vrijednost će mijenjati interrupt//
+uint8_t flag;
 /* USER CODE END 0 */
 
 /**
@@ -67,7 +90,7 @@ void SystemClock_Config(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	setvbuf(stdin, NULL, _IONBF, 0);
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -96,14 +119,48 @@ int main(void)
   /* USER CODE END 2 */
 
   /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-    /* USER CODE END WHILE */
+	//definiranje adrese, upute paljenja i moda I2Ca//
+	uint8_t addr = 0b0100011;
+	uint8_t pwrup = 0b00000001;
+	uint8_t mod = 0b00010000;
+	//definiranje varijable za spremanje podatka primljenog s BH1750 senzora i varijable za spremanje konačne preračunate vrijednosti//
+	char lux[2];
+	uint16_t LUX;
+	//pomoćna varijabla za mijenjanje PWM duty cyclea//
+	 uint8_t i;
+	 uint16_t DC = i*180;
+	/* USER CODE BEGIN WHILE */
+	//pokretanje I2C komunikacije između Nuclea i BH1750, slanje upute o modu rada//
+	HAL_I2C_Master_Transmit(&hi2c2, addr << 1, &pwrup, sizeof(pwrup), 100);
+	HAL_I2C_Master_Transmit(&hi2c2, addr << 1, &mod, sizeof(mod), 100);
+	//primanje i obrada podataka na Nucleo s BH1750 I2C protokolom//
+	while (1) {
+		HAL_I2C_Master_Receive(&hi2c2, addr << 1, &lux, sizeof(lux), 10);
+		LUX = ((lux[0] << 8) | lux[1]) / 1.2;
+		printf("Razina osvjetljenja je: %d\r\n", LUX);
+		HAL_Delay(1000);
+		//Je li dovoljno mračno da PIR počne s radom(radi po noći)//
+		if (LUX <= 50) {
+			//Je li PIR aktivirao interrupt//
+			if (flag == 1) {
+				//Pokrenut PWM i variran duty cycle//
+				for (i = 1; i <= 10; i++) {
+					HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
+					__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, i * 90);
+					HAL_Delay(500);
+				}
+//for petlja odrađena, pwm isključen//
+				HAL_TIM_PWM_Stop(&htim2, TIM_CHANNEL_2);
+			}
+			//zastavica indikator interrupta vraćena u nulu, provjera ispočetka//
+			 flag = 0;
+		}
+	}
+		/* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
-  }
-  /* USER CODE END 3 */
+		/* USER CODE BEGIN 3 */
+
+	/* USER CODE END 3 */
 }
 
 /**
@@ -148,7 +205,11 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+//Callback funkcija interrupta aktiviranog PIR senzorom//
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+  {
+	  flag=1;
+  }
 /* USER CODE END 4 */
 
 /**
